@@ -1,4 +1,4 @@
-"""Tests for neuromorf.passes.validate_structure and validate_neuron_types."""
+"""Tests for neuromorf.passes.validate_structure, validate_neuron_types, and quantize_weights."""
 
 import pytest
 import numpy as np
@@ -11,6 +11,11 @@ from neuromorf.passes.validate_structure import (
 from neuromorf.passes.validate_neuron_types import (
     validate_neuron_types,
     NeuronTypeValidationError,
+)
+from neuromorf.passes.quantize_weights import (
+    quantize_weights,
+    INT8_MIN,
+    INT8_MAX,
 )
 
 
@@ -338,3 +343,116 @@ class TestValidateNeuronTypes:
         ir.target_hardware = "akida"
         with pytest.raises(NeuronTypeValidationError, match="akida"):
             validate_neuron_types(ir)
+
+
+# ---------------------------------------------------------------------------
+# QuantizeWeights tests
+# ---------------------------------------------------------------------------
+
+def _make_qir(*triples) -> NeuromorphIR:
+    """Build a NeuromorphIR with one synapse per (src_id, dst_id, weight) triple.
+
+    Neurons are created automatically for every id that appears.
+    """
+    neuron_ids: set[str] = set()
+    synapses: list[Synapse] = []
+    for src_id, dst_id, weight in triples:
+        neuron_ids.add(src_id)
+        neuron_ids.add(dst_id)
+        synapses.append(Synapse(src_id=src_id, dst_id=dst_id, weight=weight))
+
+    neurons = {nid: _neuron(nid) for nid in neuron_ids}
+    return NeuromorphIR(
+        target_hardware="cpu",
+        neurons=neurons,
+        synapses=synapses,
+        input_neuron_ids=[],
+        output_neuron_ids=[],
+    )
+
+
+class TestQuantizeWeights:
+    # 1. Weights in range get dtype int8 and correct values
+    def test_in_range_weights_become_int8(self):
+        w = np.array([[1.0, -2.0], [127.0, -128.0]])
+        ir = _make_qir(("n0", "n1", w.copy()))
+        quantize_weights(ir)
+        assert ir.synapses[0].weight.dtype == np.int8
+        np.testing.assert_array_equal(ir.synapses[0].weight, w.astype(np.int8))
+
+    # 2. Weights outside range are clipped to [-128, 127]
+    def test_out_of_range_weights_are_clipped(self):
+        w = np.array([200.0, -300.0, 50.0])
+        ir = _make_qir(("n0", "n1", w.copy()))
+        quantize_weights(ir)
+        result = ir.synapses[0].weight
+        assert result.dtype == np.int8
+        assert int(result[0]) == 127
+        assert int(result[1]) == -128
+        assert int(result[2]) == 50
+
+    # 3. Clipping warning logged with percentage and max magnitude
+    def test_clipping_warning_has_pct_and_max_mag(self):
+        w = np.array([200.0, 1.0, 1.0, 1.0])   # 1 of 4 clipped = 25%
+        ir = _make_qir(("n0", "n1", w.copy()))
+        quantize_weights(ir)
+        entry = ir.transformation_log[-1]
+        assert len(entry["warnings"]) == 1
+        warning = entry["warnings"][0]
+        assert "25.00%" in warning
+        assert "200.0000" in warning
+
+    # 4. No warning when all weights are in range
+    def test_no_warning_when_all_in_range(self):
+        w = np.array([1.0, -1.0, 50.0, -50.0])
+        ir = _make_qir(("n0", "n1", w.copy()))
+        quantize_weights(ir)
+        entry = ir.transformation_log[-1]
+        assert entry["warnings"] == []
+
+    # 5. Neuron params remain unchanged (float) after pass
+    def test_neuron_params_unchanged_after_pass(self):
+        w = np.array([1.0])
+        ir = _make_qir(("n0", "n1", w.copy()))
+        # Capture original param values
+        tau_before = ir.neurons["n0"].params["tau"].copy()
+        vt_before = ir.neurons["n0"].params["v_threshold"].copy()
+        quantize_weights(ir)
+        np.testing.assert_array_equal(ir.neurons["n0"].params["tau"], tau_before)
+        np.testing.assert_array_equal(ir.neurons["n0"].params["v_threshold"], vt_before)
+        assert ir.neurons["n0"].params["tau"].dtype == np.float64
+
+    # 6. Transformation log entry has correct structure and params
+    def test_log_entry_structure(self):
+        w = np.array([1.0])
+        ir = _make_qir(("n0", "n1", w.copy()))
+        quantize_weights(ir)
+        entry = ir.transformation_log[-1]
+        assert entry["pass"] == "QuantizeWeights"
+        assert entry["status"] == "passed"
+        assert entry["params"]["dtype"] == "int8"
+        assert entry["params"]["range"] == [INT8_MIN, INT8_MAX]
+        assert "affected_ids" in entry
+        assert "warnings" in entry
+
+    # 7. affected_ids lists all synapse "src->dst" strings
+    def test_affected_ids_lists_all_synapses(self):
+        ir = _make_qir(
+            ("n0", "n1", np.array([1.0])),
+            ("n1", "n2", np.array([2.0])),
+            ("n0", "n2", np.array([3.0])),
+        )
+        quantize_weights(ir)
+        entry = ir.transformation_log[-1]
+        assert set(entry["affected_ids"]) == {"n0->n1", "n1->n2", "n0->n2"}
+        assert len(entry["affected_ids"]) == 3
+
+    # 8. Empty synapses passes cleanly and appends log entry
+    def test_empty_synapses_passes_and_logs(self):
+        ir = _make_ir()  # no synapses, uses existing helper
+        quantize_weights(ir)
+        entry = ir.transformation_log[-1]
+        assert entry["pass"] == "QuantizeWeights"
+        assert entry["status"] == "passed"
+        assert entry["affected_ids"] == []
+        assert entry["warnings"] == []
