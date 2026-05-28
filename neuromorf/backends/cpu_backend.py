@@ -16,8 +16,8 @@ Design principles followed
 
 Supported neuron types (v1.0)
 ------------------------------
-- ``IF``  — Integrate-and-Fire (Euler, dt=1)
-- ``LIF`` — Leaky Integrate-and-Fire (Euler, dt=1)
+- ``IF``  - Integrate-and-Fire (Euler, dt=1)
+- ``LIF`` - Leaky Integrate-and-Fire (Euler, dt=1)
 
 Not yet implemented (v1.1+)
 ----------------------------
@@ -53,7 +53,7 @@ def _neuron_size(neuron: Neuron) -> int:
         return int(neuron.params["r"].size)
     if neuron.type == "I":
         return int(neuron.params.get("r", np.array([1.0])).size)
-    return 1  # fallback — should not be reached for validated graphs
+    return 1  # fallback - should not be reached for validated graphs
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +126,7 @@ class CPUBackend:
             that timestep (``input_encoding="direct"`` only).
         state:
             Neuron state dict produced by :meth:`initialize_state` or
-            returned by a previous :meth:`run` call.  **Never mutated** —
+            returned by a previous :meth:`run` call.  **Never mutated** -
             a deep copy is made internally before simulation begins.
         num_timesteps:
             Number of simulation steps to run.
@@ -161,7 +161,7 @@ class CPUBackend:
             )
 
         # ------------------------------------------------------------------
-        # 2. Deep-copy state — caller's dict is never mutated
+        # 2. Deep-copy state - caller's dict is never mutated
         # ------------------------------------------------------------------
         state = {nid: {k: v.copy() for k, v in s.items()} for nid, s in state.items()}
 
@@ -172,9 +172,9 @@ class CPUBackend:
         output_spikes = np.zeros((num_timesteps, n_out), dtype=np.float64)
 
         # Two-buffer approach:
-        #   current_spikes — spikes that fired in the *previous* timestep and
+        #   current_spikes - spikes that fired in the *previous* timestep and
         #                    are now delivered (default delay = 1 timestep).
-        #   next_spikes    — spikes fired during *this* timestep; will become
+        #   next_spikes    - spikes fired during *this* timestep; will become
         #                    current_spikes for the next iteration.
         #
         # NOTE: Synaptic delay > 1 (stored in Synapse.delay) is not simulated

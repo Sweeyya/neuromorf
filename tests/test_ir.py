@@ -1,4 +1,4 @@
-"""Tests for neuromorf.ir — Neuron, Synapse, and NeuromorphIR."""
+"""Tests for neuromorf.ir - Neuron, Synapse, and NeuromorphIR."""
 
 import pytest
 import numpy as np

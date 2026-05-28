@@ -9,7 +9,7 @@ from neuromorf.ir import NeuromorphIR, Neuron, Synapse
 
 
 # ---------------------------------------------------------------------------
-# Helpers — reusable NIR graph factories
+# Helpers - reusable NIR graph factories
 # ---------------------------------------------------------------------------
 
 def _lif_node(tau=20.0, r=1.0, v_leak=0.0, v_threshold=1.0):

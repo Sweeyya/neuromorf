@@ -100,7 +100,7 @@ def _check_cycles(ir: NeuromorphIR, allow_cycles: bool) -> None:
     try:
         cycle_edges = nx.find_cycle(G)
     except nx.NetworkXNoCycle:
-        return  # clean graph — nothing to do
+        return  # clean graph - nothing to do
 
     # Build an ordered list of unique node ids around the cycle
     cycle_ids = list(dict.fromkeys(e[0] for e in cycle_edges))

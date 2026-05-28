@@ -4,7 +4,7 @@ Pass #2 in the compiler pipeline. Checks that every neuron's type is supported
 on the compilation target declared in ir.target_hardware.
 
 Per CLAUDE.md design principle #2 ("No silent conversions"), unsupported types
-are never auto-converted — the pass raises loudly and tells the user exactly
+are never auto-converted - the pass raises loudly and tells the user exactly
 what to fix.  All unsupported neurons are collected before raising so the user
 sees every problem in a single error message.
 """
@@ -20,7 +20,7 @@ class NeuronTypeValidationError(Exception):
     """Raised when a neuron type is not supported on the target hardware."""
 
 
-# Hardware support table — the single source of truth for which neuron types
+# Hardware support table - the single source of truth for which neuron types
 # are available on each compilation target.  Both targets currently expose the
 # full set; future hardware restrictions are a one-line change here.
 HARDWARE_SUPPORT: dict[str, frozenset[str]] = {

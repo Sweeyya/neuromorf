@@ -12,16 +12,16 @@ Public API
 
 Supported NIR node types
 ------------------------
-- ``nir.Input``   — marks graph input boundary; not added to ``neurons``
-- ``nir.Output``  — marks graph output boundary; not added to ``neurons``
-- ``nir.LIF``     — Leaky Integrate-and-Fire neuron
-- ``nir.IF``      — Integrate-and-Fire neuron
-- ``nir.Affine``  — weight matrix + bias; folded into Synapse weight
-- ``nir.Linear``  — weight matrix; folded into Synapse weight
+- ``nir.Input``   - marks graph input boundary; not added to ``neurons``
+- ``nir.Output``  - marks graph output boundary; not added to ``neurons``
+- ``nir.LIF``     - Leaky Integrate-and-Fire neuron
+- ``nir.IF``      - Integrate-and-Fire neuron
+- ``nir.Affine``  - weight matrix + bias; folded into Synapse weight
+- ``nir.Linear``  - weight matrix; folded into Synapse weight
 
 Weight-node folding
 -------------------
-NIR edges carry no weight information — weights live on ``Affine`` / ``Linear``
+NIR edges carry no weight information - weights live on ``Affine`` / ``Linear``
 nodes.  The parser "folds" each weight node transparently:
 
     A  →  [Affine/Linear W]  →  B
@@ -56,7 +56,7 @@ class UnsupportedNIRNodeError(Exception):
 def _unsupported_error(node_id: str, node: nir.NIRNode) -> UnsupportedNIRNodeError:
     node_type = type(node).__name__
     return UnsupportedNIRNodeError(
-        f"ERROR: NIR Parser — Unsupported node type\n"
+        f"ERROR: NIR Parser - Unsupported node type\n"
         f"Node:      {node_id}\n"
         f"Type:      {node_type}\n"
         f"Problem:   No mapping from this NIR node type to NeuromorphIR\n"
@@ -79,7 +79,7 @@ def _node_size(node: nir.NIRNode) -> int:
         return int(np.prod(node.tau.shape))
     if isinstance(node, nir.IF):
         return int(np.prod(node.r.shape))
-    return 1  # fallback — should not be reached for valid, supported nodes
+    return 1  # fallback - should not be reached for valid, supported nodes
 
 
 def _parse_lif(node_id: str, node: nir.LIF) -> Neuron:
@@ -119,7 +119,7 @@ def parse(
     nir_graph:
         The NIR graph to parse.
     target:
-        Compilation target — ``"cpu"`` or ``"loihi2"``.
+        Compilation target - ``"cpu"`` or ``"loihi2"``.
 
     Returns
     -------
@@ -169,13 +169,13 @@ def parse(
     synapses: List[Synapse] = []
 
     for src_id, dst_id in edges:
-        # Case A: src is a weight node — already handled by the leg that
+        # Case A: src is a weight node - already handled by the leg that
         # created the synapse when processing the *incoming* edge to this
         # weight node.  Skip to avoid double-counting.
         if src_id in weight_nodes:
             continue
 
-        # Case B: dst is a weight node — fold it transparently.
+        # Case B: dst is a weight node - fold it transparently.
         # For every edge leaving dst_id, create one Synapse from src_id to
         # that successor, carrying the weight matrix from the weight node.
         if dst_id in weight_nodes:
@@ -212,5 +212,5 @@ def parse(
     )
 
 
-# Backward-compatible alias — prefer `parse` in new code.
+# Backward-compatible alias - prefer `parse` in new code.
 parse_nir = parse

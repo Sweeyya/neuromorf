@@ -1,10 +1,13 @@
-"""Tests for neuromorf.backends.cpu_backend.CPUBackend."""
+"""Tests for neuromorf.backends: CPUBackend and LavaBackend."""
+
+import ast
 
 import pytest
 import numpy as np
 
 from neuromorf.ir import NeuromorphIR, Neuron, Synapse
 from neuromorf.backends.cpu_backend import CPUBackend
+from neuromorf.backends.lava_backend import LavaBackend
 
 
 # ---------------------------------------------------------------------------
@@ -311,3 +314,169 @@ class TestSynapsePropagation:
         output, _ = backend.run(input_data, state, num_timesteps=2)
         assert output[0, 0] == 0.0   # n1 not yet fired at t=0
         assert output[1, 0] == 1.0   # n1 fires at t=1
+
+
+# ===========================================================================
+# LavaBackend tests
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Lava fixture helpers (target_hardware="loihi2")
+# ---------------------------------------------------------------------------
+
+def _lava_if_ir() -> NeuromorphIR:
+    """Single IF neuron for Loihi 2 code-gen tests."""
+    neuron = Neuron("n0", "IF", {
+        "r":           np.array([1.0]),
+        "v_threshold": np.array([1]),
+        "v_reset":     np.array([0]),
+    })
+    return NeuromorphIR(
+        target_hardware="loihi2",
+        neurons={"n0": neuron},
+        synapses=[],
+        input_neuron_ids=["n0"],
+        output_neuron_ids=["n0"],
+    )
+
+
+def _lava_lif_ir() -> NeuromorphIR:
+    """Single LIF neuron for Loihi 2 code-gen tests."""
+    neuron = Neuron("n0", "LIF", {
+        "tau":         np.array([20.0]),
+        "r":           np.array([1.0]),
+        "v_threshold": np.array([1]),
+        "v_leak":      np.array([0.0]),
+        "v_reset":     np.array([0]),
+    })
+    return NeuromorphIR(
+        target_hardware="loihi2",
+        neurons={"n0": neuron},
+        synapses=[],
+        input_neuron_ids=["n0"],
+        output_neuron_ids=["n0"],
+    )
+
+
+def _lava_synapse_ir() -> NeuromorphIR:
+    """Two IF neurons connected by a synapse with known weight [[2.0]]."""
+    n0 = Neuron("n0", "IF", {"r": np.array([1.0]), "v_threshold": np.array([1])})
+    n1 = Neuron("n1", "IF", {"r": np.array([1.0]), "v_threshold": np.array([1])})
+    syn = Synapse(src_id="n0", dst_id="n1", weight=np.array([[2.0]]))
+    return NeuromorphIR(
+        target_hardware="loihi2",
+        neurons={"n0": n0, "n1": n1},
+        synapses=[syn],
+        input_neuron_ids=["n0"],
+        output_neuron_ids=["n1"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# TestLavaBackend
+# ---------------------------------------------------------------------------
+
+class TestLavaBackend:
+    # 1. generate() returns a non-empty string
+    def test_generate_returns_nonempty_string(self, tmp_path):
+        backend = LavaBackend(_lava_if_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        assert isinstance(code, str)
+        assert len(code) > 0
+
+    # 2. Generated code contains correct neuron process variable names
+    def test_generate_contains_neuron_process_names(self, tmp_path):
+        backend = LavaBackend(_lava_if_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        assert "proc_n0" in code
+
+    def test_generate_contains_all_neuron_names_for_two_neuron_graph(self, tmp_path):
+        backend = LavaBackend(_lava_synapse_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        assert "proc_n0" in code
+        assert "proc_n1" in code
+
+    # 3. Generated code contains weight array values from the IR
+    def test_generate_contains_weight_arrays(self, tmp_path):
+        backend = LavaBackend(_lava_synapse_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        # The weight [[2.0]] must appear somewhere in the generated code
+        assert "2.0" in code
+
+    def test_generate_weight_variable_name_present(self, tmp_path):
+        backend = LavaBackend(_lava_synapse_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        assert "w_n0_to_n1" in code
+
+    # 4. Generated code is syntactically valid Python
+    def test_generate_is_valid_python(self, tmp_path):
+        backend = LavaBackend(_lava_if_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        ast.parse(code)  # raises SyntaxError if invalid
+
+    def test_generate_lif_is_valid_python(self, tmp_path):
+        backend = LavaBackend(_lava_lif_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        ast.parse(code)
+
+    def test_generate_synapse_is_valid_python(self, tmp_path):
+        backend = LavaBackend(_lava_synapse_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        ast.parse(code)
+
+    # 5. Generated code contains run configuration
+    def test_generate_contains_run_steps(self, tmp_path):
+        backend = LavaBackend(_lava_if_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        assert "RunSteps" in code
+
+    def test_generate_contains_sim_cfg(self, tmp_path):
+        backend = LavaBackend(_lava_if_ir())
+        code = backend.generate(str(tmp_path / "model.py"))
+        assert "Loihi2SimCfg" in code
+
+    def test_generate_num_steps_from_simulation_config(self, tmp_path):
+        """simulation_config num_steps is reflected in generated code."""
+        neuron = Neuron("n0", "IF", {
+            "r": np.array([1.0]), "v_threshold": np.array([1]),
+        })
+        ir = NeuromorphIR(
+            target_hardware="loihi2",
+            neurons={"n0": neuron},
+            synapses=[],
+            input_neuron_ids=["n0"],
+            output_neuron_ids=["n0"],
+            simulation_config={"num_steps": 42},
+        )
+        backend = LavaBackend(ir)
+        code = backend.generate(str(tmp_path / "model.py"))
+        assert "num_steps = 42" in code
+
+    # 6. Unknown neuron type raises NotImplementedError
+    def test_unknown_neuron_type_raises(self, tmp_path):
+        ir = _lava_if_ir()
+        ir.neurons["n0"].type = "SpikyBoi"   # bypass __post_init__
+        backend = LavaBackend(ir)
+        with pytest.raises(NotImplementedError, match="SpikyBoi"):
+            backend.generate(str(tmp_path / "model.py"))
+
+    def test_unknown_type_error_contains_neuron_id(self, tmp_path):
+        ir = _lava_if_ir()
+        ir.neurons["n0"].type = "SpikyBoi"
+        backend = LavaBackend(ir)
+        with pytest.raises(NotImplementedError, match="n0"):
+            backend.generate(str(tmp_path / "model.py"))
+
+    # 7. generate() writes the code to disk
+    def test_generate_writes_to_file(self, tmp_path):
+        backend = LavaBackend(_lava_if_ir())
+        out = tmp_path / "model.py"
+        backend.generate(str(out))
+        assert out.exists()
+        assert out.read_text(encoding="utf-8") != ""
+
+    def test_file_content_matches_returned_string(self, tmp_path):
+        backend = LavaBackend(_lava_if_ir())
+        out = tmp_path / "model.py"
+        code = backend.generate(str(out))
+        assert out.read_text(encoding="utf-8") == code

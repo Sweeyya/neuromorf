@@ -22,7 +22,7 @@ class NeuromorphIR:
     """The complete intermediate representation of a neuromorphic model.
 
     Attributes:
-        target_hardware: Compilation target — "loihi2" or "cpu".
+        target_hardware: Compilation target - "loihi2" or "cpu".
         neurons: Neuron registry mapping id → Neuron.
         synapses: Ordered list of synaptic connections.
         input_neuron_ids: IDs of neurons that receive external input.

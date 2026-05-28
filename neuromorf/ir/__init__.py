@@ -1,4 +1,4 @@
-"""neuromorf.ir — Neuromorphic Intermediate Representation."""
+"""neuromorf.ir - Neuromorphic Intermediate Representation."""
 
 from .neuron import Neuron, VALID_NEURON_TYPES
 from .synapse import Synapse

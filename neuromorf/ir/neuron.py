@@ -17,7 +17,7 @@ class Neuron:
 
     Attributes:
         id: Unique string identifier within the graph.
-        type: Neuron model type — one of IF, LIF, CubaLIF, CubaLI, LI, I.
+        type: Neuron model type - one of IF, LIF, CubaLIF, CubaLI, LI, I.
         params: Model parameters keyed by name; values are NumPy arrays
             (e.g. {"tau": np.array([20.0]), "v_threshold": np.array([1.0])}).
         initial_membrane_potential: Optional initial membrane voltage array.

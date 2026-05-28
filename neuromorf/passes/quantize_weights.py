@@ -6,7 +6,7 @@ on target hardware.
 
 When any weight value falls outside the int8 range [-128, 127] it is clipped
 to the boundary and a warning is recorded in the transformation log.  No
-exception is raised for clipping — the pass never fails on out-of-range
+exception is raised for clipping - the pass never fails on out-of-range
 values, it just reports them loudly (CLAUDE.md principle #1: "Fail loudly").
 
 Neuron params (tau, v_threshold, r, etc.) are never touched by this pass, per
