@@ -1,4 +1,4 @@
-"""Tests for neuromorf.passes.validate_structure."""
+"""Tests for neuromorf.passes.validate_structure and validate_neuron_types."""
 
 import pytest
 import numpy as np
@@ -7,6 +7,10 @@ from neuromorf.ir import NeuromorphIR, Neuron, Synapse
 from neuromorf.passes.validate_structure import (
     validate_structure,
     StructureValidationError,
+)
+from neuromorf.passes.validate_neuron_types import (
+    validate_neuron_types,
+    NeuronTypeValidationError,
 )
 
 
@@ -224,3 +228,113 @@ class TestCycles:
         ir = _make_ir(_synapse("n0", "n0"))
         with pytest.raises(StructureValidationError, match="Cycle"):
             validate_structure(ir)
+
+
+# ---------------------------------------------------------------------------
+# ValidateNeuronTypes tests
+# ---------------------------------------------------------------------------
+
+def _make_typed_ir(target: str = "cpu", **type_map: str) -> NeuromorphIR:
+    """Build a NeuromorphIR whose neurons have the given id->type mapping.
+
+    Example: _make_typed_ir(n0="LIF", n1="IF")
+    """
+    neurons = {
+        nid: Neuron(id=nid, type=ntype)
+        for nid, ntype in type_map.items()
+    }
+    return NeuromorphIR(
+        target_hardware=target,
+        neurons=neurons,
+        synapses=[],
+        input_neuron_ids=[],
+        output_neuron_ids=[],
+    )
+
+
+class TestValidateNeuronTypes:
+    # --- valid graphs pass cleanly ---
+
+    def test_all_supported_types_pass_on_cpu(self):
+        ir = _make_typed_ir("cpu", n0="IF", n1="LIF", n2="CubaLIF",
+                             n3="CubaLI", n4="LI", n5="I")
+        validate_neuron_types(ir)  # must not raise
+
+    def test_valid_graph_returns_same_ir(self):
+        ir = _make_typed_ir("cpu", n0="LIF")
+        result = validate_neuron_types(ir)
+        assert result is ir
+
+    def test_valid_graph_appends_log_entry(self):
+        ir = _make_typed_ir("loihi2", n0="LIF", n1="IF")
+        validate_neuron_types(ir)
+        entry = ir.transformation_log[-1]
+        assert entry["pass"] == "ValidateNeuronTypes"
+        assert entry["status"] == "passed"
+        assert entry["affected_ids"] == []
+        assert entry["params"] == {}
+
+    def test_empty_neurons_passes(self):
+        ir = _make_typed_ir("cpu")  # no neurons at all
+        validate_neuron_types(ir)
+        assert ir.transformation_log[-1]["status"] == "passed"
+
+    # --- unsupported type raises ---
+
+    def test_unsupported_type_raises(self):
+        ir = _make_typed_ir("cpu", bad="LIF")
+        ir.neurons["bad"].type = "SpikyBoi"   # bypass __post_init__
+        with pytest.raises(NeuronTypeValidationError):
+            validate_neuron_types(ir)
+
+    def test_error_contains_neuron_id(self):
+        ir = _make_typed_ir("cpu", bad_neuron="LIF")
+        ir.neurons["bad_neuron"].type = "SpikyBoi"
+        with pytest.raises(NeuronTypeValidationError, match="bad_neuron"):
+            validate_neuron_types(ir)
+
+    def test_error_contains_neuron_type(self):
+        ir = _make_typed_ir("cpu", n0="LIF")
+        ir.neurons["n0"].type = "SpikyBoi"
+        with pytest.raises(NeuronTypeValidationError, match="SpikyBoi"):
+            validate_neuron_types(ir)
+
+    def test_error_contains_supported_types(self):
+        ir = _make_typed_ir("cpu", n0="LIF")
+        ir.neurons["n0"].type = "SpikyBoi"
+        with pytest.raises(NeuronTypeValidationError) as exc_info:
+            validate_neuron_types(ir)
+        msg = str(exc_info.value)
+        # Each supported type should appear in the message
+        for t in ("IF", "LIF", "CubaLIF", "CubaLI", "LI", "I"):
+            assert t in msg
+
+    def test_error_contains_target_hardware(self):
+        ir = _make_typed_ir("loihi2", n0="LIF")
+        ir.neurons["n0"].type = "SpikyBoi"
+        with pytest.raises(NeuronTypeValidationError, match="loihi2"):
+            validate_neuron_types(ir)
+
+    def test_multiple_unsupported_all_reported_in_one_error(self):
+        ir = _make_typed_ir("cpu", n0="LIF", n1="LIF")
+        ir.neurons["n0"].type = "BadTypeA"
+        ir.neurons["n1"].type = "BadTypeB"
+        with pytest.raises(NeuronTypeValidationError) as exc_info:
+            validate_neuron_types(ir)
+        msg = str(exc_info.value)
+        assert "BadTypeA" in msg
+        assert "BadTypeB" in msg
+
+    # --- unknown target hardware ---
+
+    def test_unknown_target_hardware_raises(self):
+        ir = _make_typed_ir("cpu", n0="LIF")
+        ir.target_hardware = "tpu"   # mutate after construction
+        with pytest.raises(NeuronTypeValidationError, match="unknown target hardware"):
+            validate_neuron_types(ir)
+
+    def test_unknown_hardware_error_contains_hardware_name(self):
+        ir = _make_typed_ir("cpu", n0="LIF")
+        ir.target_hardware = "akida"
+        with pytest.raises(NeuronTypeValidationError, match="akida"):
+            validate_neuron_types(ir)
