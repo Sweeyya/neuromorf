@@ -44,11 +44,22 @@ def _fmt_items(items: List[str]) -> str:
 # ---------------------------------------------------------------------------
 
 def _check_endpoints(ir: NeuromorphIR) -> None:
-    """Collect all synapses that reference a missing neuron id; raise once."""
+    """Collect all synapses that reference a missing neuron id; raise once.
+
+    Valid endpoints are all ids in ``ir.neurons`` plus any ids in
+    ``ir.input_neuron_ids`` and ``ir.output_neuron_ids``.  The latter
+    represent NIR Input/Output boundary nodes that are not real neurons
+    but are legitimate synapse endpoints produced by the NIR parser.
+    """
+    valid_ids = (
+        set(ir.neurons.keys())
+        | set(ir.input_neuron_ids)
+        | set(ir.output_neuron_ids)
+    )
     errors: List[str] = []
     for syn in ir.synapses:
         for missing_id in (syn.src_id, syn.dst_id):
-            if missing_id not in ir.neurons:
+            if missing_id not in valid_ids:
                 errors.append(
                     f"Neuron:  {missing_id}\n"
                     f"Problem: Synapse {syn.src_id} -> {syn.dst_id} references "
